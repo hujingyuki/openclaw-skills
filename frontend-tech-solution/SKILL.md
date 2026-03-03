@@ -22,6 +22,92 @@
 - **或本地 Markdown 文件**（备选，当飞书 API 不可用时）
 - 技术方案 Markdown 内容
 
+## 飞书文档创建流程
+
+### 1. 获取应用身份 Access Token
+
+使用飞书应用的 `app_id` 和 `app_secret` 调用飞书开放平台 API：
+
+```bash
+curl -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "cli_xxx",
+    "app_secret": "xxx"
+  }'
+```
+
+返回：
+```json
+{
+  "code": 0,
+  "tenant_access_token": "t-at-xxx",
+  "expire": 7200
+}
+```
+
+### 2. 创建飞书文档
+
+使用 access token 创建文档：
+
+```bash
+curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer t-at-xxx" \
+  -d '{
+    "title": "前端技术方案 - 项目名称"
+  }'
+```
+
+返回文档 `document_id`。
+
+### 3. 写入文档内容
+
+```bash
+curl -X PUT "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children" \
+  -H "Authorization: Bearer t-at-xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parent_block_id": "{block_id}",
+    "elements": [...]
+  }'
+```
+
+### 4. 转移文档权限给用户（可选）
+
+将应用编辑权限转移给当前用户：
+
+```bash
+curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/collaborators" \
+  -H "Authorization: Bearer t-at-xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "member_id": "ou_xxx",
+    "member_type": "user",
+    "permission": "edit"
+  }'
+```
+
+### 配置信息
+
+飞书应用配置存储在 `/home/admin/.openclaw/openclaw.json`：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "accounts": {
+        "feishubot": {
+          "appId": "cli_a92fbd9e1b75dcc9",
+          "appSecret": "PDwa1G9motlipp2xNXCdcbykSwq1rt4Z",
+          "domain": "feishu"
+        }
+      }
+    }
+  }
+}
+```
+
 ## 技术栈默认配置
 
 - **框架:** React 18+
@@ -57,7 +143,12 @@
    - 路由设计
    - 测试计划
    - 开发计划
-4. **尝试**调用 `feishu_doc action=create` 创建飞书文档
+4. **创建飞书文档**（优先）：
+   - 从配置读取 `app_id` 和 `app_secret`
+   - 调用飞书 API 获取 `tenant_access_token`
+   - 调用 `POST /docx/v1/documents` 创建文档
+   - 写入文档内容
+   - （可选）调用权限转移接口将编辑权限转给用户
 5. **如果飞书 API 失败**，使用 `write` 保存到本地 workspace/output/ 目录
 6. 返回文档链接（飞书或本地路径）
 
@@ -135,3 +226,11 @@
 - **飞书 API 可能失败**（权限/格式问题），需 fallback 到本地文件
 - 本地文件保存路径：`/workspace/output/<项目名>-<日期>.md`
 - 创建成功后优先返回飞书链接，其次返回本地路径
+- **权限转移**：文档创建后建议调用权限转移接口，将编辑权限转给当前用户
+- **Token 缓存**：`tenant_access_token` 有效期 2 小时，可缓存复用
+
+## 依赖的飞书 API 权限
+
+- `docs:document:write` — 创建和编辑文档
+- `docs:document.content:write` — 写入文档内容
+- `wiki:wiki` — 访问知识库（wiki 格式文档）
