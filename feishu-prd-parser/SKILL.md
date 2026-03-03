@@ -31,6 +31,24 @@
 
 ## 处理流程
 
+### 前置步骤：生成飞书应用身份 Token
+
+**在调用任何飞书 API 之前，必须先生成应用身份 access token！**
+
+```bash
+curl -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "cli_xxx",
+    "app_secret": "xxx"
+  }'
+```
+
+**Token 管理：**
+- 有效期：2 小时
+- 有效期内复用，不重复生成
+- 建议缓存到内存或临时文件
+
 ### docx 格式文档
 
 1. 解析 URL 获取 doc_token（格式：`https://[domain].feishu.cn/docx/XXX` → `XXX`）
@@ -48,6 +66,38 @@
 4. 调用 `feishu_doc action=list_blocks` 获取所有块
 5. 识别图片块并提取 URL
 6. 输出结构化 Markdown
+
+### 错误处理（重要！）
+
+**如果任何步骤失败，立即中断流程并返回错误信息：**
+
+```javascript
+if (feishu_wiki.get 失败) {
+  return {
+    success: false,
+    error: "Wiki 节点获取失败，请检查链接是否正确",
+    stage: "wiki_get"
+  };
+}
+
+if (feishu_doc.read 失败) {
+  return {
+    success: false,
+    error: "文档内容读取失败，可能没有访问权限",
+    stage: "doc_read"
+  };
+}
+
+if (文档内容为空) {
+  return {
+    success: false,
+    error: "文档内容为空，无法解析",
+    stage: "content_empty"
+  };
+}
+```
+
+**失败不继续：** PRD 解析失败时，不继续后续流程，直接告知用户。
 
 ## URL 格式识别
 

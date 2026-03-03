@@ -18,9 +18,58 @@
 
 ## 输出
 
-- **飞书文档链接**（优先，调用 feishu_doc 创建）
+### 成功场景
+
+**技术方案文档：**
+- **飞书文档链接**（优先，调用飞书 API 创建）
 - **或本地 Markdown 文件**（备选，当飞书 API 不可用时）
-- 技术方案 Markdown 内容
+- 路径：`/workspace/output/<项目名>-<日期>.md`
+
+**返回信息：**
+```json
+{
+  "status": "success",
+  "document": {
+    "type": "feishu|local",
+    "url": "https://...",
+    "path": "/workspace/output/..."
+  },
+  "figmaUsed": true,
+  "prdSource": "wiki|docx"
+}
+```
+
+### 失败场景
+
+**PRD 解析失败：**
+```json
+{
+  "status": "error",
+  "stage": "prd_parsing",
+  "message": "PRD 文档解析失败，无法继续生成技术方案。请检查：...",
+  "recoverable": false
+}
+```
+
+**Figma 解析失败：**
+```json
+{
+  "status": "error",
+  "stage": "figma_parsing",
+  "message": "Figma 设计稿解析异常，无法继续生成技术方案。请检查：...",
+  "recoverable": false
+}
+```
+
+**技术方案生成失败：**
+```json
+{
+  "status": "error",
+  "stage": "solution_generation",
+  "message": "技术方案生成失败",
+  "recoverable": true
+}
+```
 
 ## 飞书文档创建流程
 
@@ -136,26 +185,225 @@ curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/c
 
 ## 处理流程
 
-1. 读取 PRD 文档，提取功能需求
-2. 读取 Figma schema，分析组件结构
-3. 生成技术方案文档（包含以下章节）：
-   - 项目概述
-   - 技术栈说明
-   - 组件设计（基于 shadcn）
-   - 页面结构
-   - API 接口设计
-   - 状态管理方案
-   - 路由设计
-   - 测试计划
-   - 开发计划
-4. **创建飞书文档**（优先）：
-   - 从配置读取 `app_id` 和 `app_secret`
-   - 调用飞书 API 获取 `tenant_access_token`
-   - 调用 `POST /docx/v1/documents` 创建文档
-   - 写入文档内容
-   - （可选）调用权限转移接口将编辑权限转给用户
-5. **如果飞书 API 失败**，使用 `write` 保存到本地 workspace/output/ 目录
-6. 返回文档链接（飞书或本地路径）
+### 前置步骤：生成飞书应用身份 Token
+
+**在调用任何飞书 API 之前，必须先生成应用身份 access token！**
+
+```bash
+# 1. 从配置读取 app_id 和 app_secret
+# 配置路径：/home/admin/.openclaw/openclaw.json
+
+# 2. 调用飞书 API 获取 tenant_access_token
+curl -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "cli_xxx",
+    "app_secret": "xxx"
+  }'
+
+# 3. 返回结果
+{
+  "code": 0,
+  "tenant_access_token": "t-at-xxx",
+  "expire": 7200
+}
+```
+
+**Token 管理规则：**
+- ✅ Token 有效期：**2 小时**（7200 秒）
+- ✅ 有效期内复用，不重复生成
+- ✅ 建议缓存到内存或临时文件
+- ❌ 每次调用都生成新 token（浪费且可能被限流）
+
+---
+
+### 步骤 1：解析 PRD 文档（必需）
+
+**这是必需步骤，失败则中断整个流程！**
+
+#### 1.1 识别文档格式
+
+| 格式 | URL 示例 | Token 提取 |
+|------|----------|------------|
+| docx | `https://xxx.feishu.cn/docx/ABC123` | `ABC123` |
+| wiki | `https://xxx.feishu.cn/wiki/XYZ789` | `XYZ789` |
+
+#### 1.2 获取文档内容
+
+**wiki 格式：**
+```javascript
+// 第一步：获取 obj_token
+feishu_wiki {
+  "action": "get",
+  "token": "wiki_token_from_url"
+}
+// 返回：{ "obj_token": "xxx", "obj_type": "docx" }
+
+// 第二步：使用 obj_token 读取文档
+feishu_doc {
+  "action": "read",
+  "doc_token": "obj_token_from_above"
+}
+```
+
+**docx 格式：**
+```javascript
+// 直接读取文档
+feishu_doc {
+  "action": "read",
+  "doc_token": "doc_token_from_url"
+}
+```
+
+#### 1.3 错误处理（重要！）
+
+```javascript
+if (feishu_doc.read 失败 || feishu_wiki.get 失败) {
+  // ❌ 中断流程，不再继续
+  return "PRD 文档解析失败，无法继续生成技术方案。请检查：
+    1. 文档链接是否正确
+    2. 是否有文档访问权限
+    3. 飞书应用 token 是否有效";
+}
+```
+
+**失败场景：**
+- ❌ 文档链接无效
+- ❌ 没有访问权限
+- ❌ 飞书 API 故障
+- ❌ Token 过期或无效
+
+**成功场景：**
+- ✅ 获取到文档标题、内容、结构
+- ✅ 继续下一步
+
+---
+
+### 步骤 2：解析 Figma 设计稿（可选）
+
+**这是可选步骤，根据用户是否提供 Figma URL 决定！**
+
+#### 2.1 判断是否需要解析
+
+```javascript
+if (!用户提供了 Figma URL) {
+  // 跳过 Figma 解析，直接进入步骤 3
+  console.log("未提供设计稿，跳过 Figma 解析");
+  figmaSchema = null;
+} else {
+  // 开始解析 Figma
+  proceed_to_2_2();
+}
+```
+
+#### 2.2 解析 Figma 节点
+
+```bash
+# 解析 URL 获取 file_key 和 node_id
+# URL 格式：https://www.figma.com/file/:key/:name?node-id=:id
+
+curl -X GET "https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}" \
+  -H "X-Figma-Token: $FIGMA_TOKEN"
+```
+
+#### 2.3 验证解析结果（重要！）
+
+```javascript
+const figmaResponse = await callFigmaAPI();
+
+// 验证是否包含有效节点信息
+if (!figmaResponse.nodes || 
+    !figmaResponse.nodes[node_id] ||
+    !figmaResponse.nodes[node_id].name ||
+    !figmaResponse.nodes[node_id].type) {
+  
+  // ❌ 中断流程，告知用户
+  return "Figma 设计稿解析异常，无法继续生成技术方案。请检查：
+    1. Figma URL 是否正确（包含 node-id 参数）
+    2. FIGMA_TOKEN 是否有效
+    3. 设计稿是否有访问权限
+    4. 节点是否存在";
+}
+
+// ✅ 解析成功，提取关键信息
+figmaSchema = {
+  name: figmaResponse.nodes[node_id].name,
+  type: figmaResponse.nodes[node_id].type,
+  children: figmaResponse.nodes[node_id].children,
+  // ...
+};
+```
+
+**失败场景：**
+- ❌ Token 无效（403 Invalid token）
+- ❌ 文件/节点不存在（404）
+- ❌ 没有访问权限
+- ❌ URL 格式错误（缺少 node-id）
+- ❌ 返回数据不包含有效节点信息
+
+**成功场景：**
+- ✅ 获取到设计稿名称、类型、组件结构
+- ✅ 继续步骤 3
+
+---
+
+### 步骤 3：生成技术方案
+
+**基于 PRD（必需）+ Figma（可选）生成技术方案**
+
+```javascript
+// 输入
+const prdContent = step1_result; // 必需
+const figmaSchema = step2_result; // 可选，可能为 null
+
+// 生成技术方案文档
+const solution = generateSolution({
+  prd: prdContent,
+  figma: figmaSchema, // 如果有
+});
+
+// 输出
+if (solution.success) {
+  return {
+    status: "success",
+    document: solution.content,
+    figmaUsed: figmaSchema !== null,
+  };
+} else {
+  return {
+    status: "error",
+    message: "技术方案生成失败",
+  };
+}
+```
+
+---
+
+### 完整流程图
+
+```
+开始
+  ↓
+[前置] 生成飞书应用身份 token（2 小时有效期）
+  ↓
+[步骤 1] 解析 PRD 文档（必需）
+  ↓
+  成功？───否───→ ❌ 中断流程，告知用户
+  ↓是
+[步骤 2] 用户提供了 Figma URL？
+  ↓
+  是 ──→ 解析 Figma 设计稿
+          ↓
+          包含有效节点信息？───否───→ ❌ 中断流程，告知用户
+          ↓是
+          提取设计稿 schema
+  ↓
+  否（跳过 Figma）
+  ↓
+[步骤 3] 生成技术方案（PRD + 可选 Figma）
+  ↓
+完成 → 返回技术方案文档
+```
 
 ## 环境变量
 
