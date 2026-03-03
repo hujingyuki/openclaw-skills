@@ -38,6 +38,14 @@ Figma 设计稿节点解析技能。通过 Figma API 获取设计稿节点树，
 ## 环境变量
 
 - `FIGMA_TOKEN` — Figma Personal Access Token
+- **配置位置**：`~/.bashrc` 或 `~/.zshrc` 或系统环境变量
+- **获取方式**：https://www.figma.com/developers/api#access-tokens
+
+## 故障排查
+
+- **403 Invalid token**：检查 `FIGMA_TOKEN` 是否正确配置
+- **环境变量未生效**：在当前 shell 执行 `export FIGMA_TOKEN=xxx` 或重启终端
+- **权限不足**：确认 Token 具有文件读取权限（file_read scope）
 
 ## 依赖工具
 

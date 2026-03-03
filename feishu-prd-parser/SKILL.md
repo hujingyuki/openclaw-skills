@@ -32,11 +32,18 @@
 ## 处理流程
 
 1. 解析 URL 获取 doc_token
-2. 调用 `feishu_doc action=read` 读取文档
-3. 调用 `feishu_doc action=list_blocks` 获取所有块
-4. 识别图片块（image 类型）并提取 URL
-5. 识别流程图/原型图（通过 image 工具分析）
-6. 输出结构化 Markdown
+2. **尝试**调用 `feishu_doc action=read` 读取文档
+3. **如果失败**，尝试 `feishu_doc action=list_blocks` 获取块
+4. **如果仍失败**（wiki 格式不支持），使用 `web_fetch` 抓取页面内容
+5. 识别图片块（image 类型）并提取 URL
+6. 识别流程图/原型图（通过 image 工具分析）
+7. 输出结构化 Markdown
+
+## 已知限制
+
+- **wiki 格式文档**：`feishu_doc` 工具仅支持 docx 格式，wiki 格式返回 400 错误
+- **解决方案**：wiki 链接使用 `web_fetch` 抓取，或转换为 docx 格式
+- **权限问题**：需要飞书应用具有 `docs:document.content:read` 权限
 
 ## 环境变量
 
