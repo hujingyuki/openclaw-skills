@@ -31,19 +31,36 @@
 
 ## 处理流程
 
-1. 解析 URL 获取 doc_token
-2. **尝试**调用 `feishu_doc action=read` 读取文档
-3. **如果失败**，尝试 `feishu_doc action=list_blocks` 获取块
-4. **如果仍失败**（wiki 格式不支持），使用 `web_fetch` 抓取页面内容
-5. 识别图片块（image 类型）并提取 URL
-6. 识别流程图/原型图（通过 image 工具分析）
-7. 输出结构化 Markdown
+### docx 格式文档
 
-## 已知限制
+1. 解析 URL 获取 doc_token（格式：`https://[domain].feishu.cn/docx/XXX` → `XXX`）
+2. 调用 `feishu_doc action=read` 读取文档
+3. 调用 `feishu_doc action=list_blocks` 获取所有块
+4. 识别图片块（image 类型）并提取 URL
+5. 识别流程图/原型图（通过 image 工具分析）
+6. 输出结构化 Markdown
 
-- **wiki 格式文档**：`feishu_doc` 工具仅支持 docx 格式，wiki 格式返回 400 错误
-- **解决方案**：wiki 链接使用 `web_fetch` 抓取，或转换为 docx 格式
-- **权限问题**：需要飞书应用具有 `docs:document.content:read` 权限
+### wiki 格式文档
+
+1. 解析 URL 获取 wiki_token（格式：`https://[domain].feishu.cn/wiki/XXX` → `XXX`）
+2. 调用 `feishu_wiki action=get` 获取节点信息，返回 `obj_token` 和 `obj_type`
+3. 使用 `obj_token` 调用 `feishu_doc action=read` 读取文档内容
+4. 调用 `feishu_doc action=list_blocks` 获取所有块
+5. 识别图片块并提取 URL
+6. 输出结构化 Markdown
+
+## URL 格式识别
+
+| 格式 | URL 示例 | Token 提取 | 处理方式 |
+|------|----------|------------|----------|
+| docx | `https://xxx.feishu.cn/docx/ABC123` | `ABC123` | 直接用 `feishu_doc` |
+| wiki | `https://xxx.feishu.cn/wiki/XYZ789` | `XYZ789` | 先用 `feishu_wiki` 获取 `obj_token` |
+
+## 依赖工具
+
+- `feishu_doc` — 读取飞书文档内容
+- `feishu_wiki` — 获取 wiki 节点信息（wiki 格式需要）
+- `image` — 分析流程图/原型图
 
 ## 环境变量
 

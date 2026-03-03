@@ -41,11 +41,33 @@ Figma 设计稿节点解析技能。通过 Figma API 获取设计稿节点树，
 - **配置位置**：`~/.bashrc` 或 `~/.zshrc` 或系统环境变量
 - **获取方式**：https://www.figma.com/developers/api#access-tokens
 
+## 配置方式
+
+```bash
+# 临时配置（当前会话）
+export FIGMA_TOKEN="figd_your_token_here"
+
+# 永久配置（添加到 ~/.bashrc 或 ~/.zshrc）
+echo 'export FIGMA_TOKEN="figd_your_token_here"' >> ~/.bashrc
+source ~/.bashrc
+```
+
 ## 故障排查
 
-- **403 Invalid token**：检查 `FIGMA_TOKEN` 是否正确配置
-- **环境变量未生效**：在当前 shell 执行 `export FIGMA_TOKEN=xxx` 或重启终端
-- **权限不足**：确认 Token 具有文件读取权限（file_read scope）
+| 错误 | 原因 | 解决方案 |
+|------|------|----------|
+| `403 Invalid token` | Token 不正确或已过期 | 重新生成 Token 并更新配置 |
+| `404 Not found` | 文件 ID 错误或无权限 | 确认文件 URL 和访问权限 |
+| 环境变量未生效 | 未在当前 shell 中设置 | 执行 `export FIGMA_TOKEN=xxx` |
+| `401 Unauthorized` | Token 格式错误 | 确认以 `figd_` 开头 |
+
+## 测试命令
+
+```bash
+# 测试 API 连接
+curl -s -X GET "https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}" \
+  -H "X-Figma-Token: $FIGMA_TOKEN" | jq '.nodes'
+```
 
 ## 依赖工具
 
