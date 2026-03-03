@@ -90,16 +90,19 @@ curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/c
 
 ### 配置信息
 
-飞书应用配置存储在 `/home/admin/.openclaw/openclaw.json`：
+飞书应用配置存储在 OpenClaw 配置文件中：
 
+**配置路径：** `/home/admin/.openclaw/openclaw.json`
+
+**配置结构：**
 ```json
 {
   "channels": {
     "feishu": {
       "accounts": {
         "feishubot": {
-          "appId": "cli_a92fbd9e1b75dcc9",
-          "appSecret": "PDwa1G9motlipp2xNXCdcbykSwq1rt4Z",
+          "appId": "cli_xxx",
+          "appSecret": "xxx",
           "domain": "feishu"
         }
       }
@@ -107,6 +110,8 @@ curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/c
   }
 }
 ```
+
+**注意：** 不要将 `app_id` 和 `app_secret` 明文写入技能文档或提交到 Git。
 
 ## 技术栈默认配置
 
@@ -228,9 +233,18 @@ curl -X POST "https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/c
 - 创建成功后优先返回飞书链接，其次返回本地路径
 - **权限转移**：文档创建后建议调用权限转移接口，将编辑权限转给当前用户
 - **Token 缓存**：`tenant_access_token` 有效期 2 小时，可缓存复用
+- **安全配置**：`app_id` 和 `app_secret` 存储在 OpenClaw 配置中，不要明文写入技能文档或提交到 Git
 
 ## 依赖的飞书 API 权限
 
 - `docs:document:write` — 创建和编辑文档
 - `docs:document.content:write` — 写入文档内容
 - `wiki:wiki` — 访问知识库（wiki 格式文档）
+
+## 安全实践
+
+- ✅ 飞书应用配置存储在 `/home/admin/.openclaw/openclaw.json`（本地文件）
+- ✅ 技能文档中只记录配置路径，不写入实际值
+- ✅ `.gitignore` 已配置，排除敏感配置文件
+- ❌ 不要在技能文档、示例代码或注释中写入真实的 `app_id` 和 `app_secret`
+- ❌ 不要将包含敏感信息的文件提交到 Git 仓库
